@@ -22,6 +22,12 @@ import {
   Send,
   X,
   User,
+  BarChart3,
+  TrendingUp,
+  Users,
+  CheckCheck,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 interface EnrichedTask extends Task {
@@ -37,6 +43,7 @@ export function Tasks() {
   const [employees, setEmployees] = useState<EmployeeWithRelations[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
+  const [showStatsWidget, setShowStatsWidget] = useState(true);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -186,6 +193,38 @@ export function Tasks() {
     }
   };
 
+  // Task Completion Rate & Status Breakdown Metrics
+  const totalTasks = tasks.length;
+  const doneTasks = tasks.filter(t => t.status === 'DONE').length;
+  const inProgressTasks = tasks.filter(t => t.status === 'IN_PROGRESS').length;
+  const reviewTasks = tasks.filter(t => t.status === 'REVIEW').length;
+  const todoTasks = tasks.filter(t => t.status === 'TODO').length;
+  const overallRate = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+
+  // Member-level completion metrics
+  const memberCompletionStats = employees
+    .map(emp => {
+      const empTasks = tasks.filter(t => t.assigned_to === emp.id || t.assigned_to === emp.user_id);
+      const total = empTasks.length;
+      const done = empTasks.filter(t => t.status === 'DONE').length;
+      const inProg = empTasks.filter(t => t.status === 'IN_PROGRESS').length;
+      const rev = empTasks.filter(t => t.status === 'REVIEW').length;
+      const rate = total > 0 ? Math.round((done / total) * 100) : 0;
+      return {
+        id: emp.id,
+        name: emp.full_name,
+        photo: emp.photo,
+        position: emp.position?.name || 'Staff',
+        total,
+        done,
+        inProg,
+        rev,
+        rate,
+      };
+    })
+    .filter(m => m.total > 0)
+    .sort((a, b) => b.rate - a.rate || b.done - a.done);
+
   return (
     <div className="space-y-6">
       {/* Top Header */}
@@ -201,6 +240,20 @@ export function Tasks() {
         </div>
 
         <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setShowStatsWidget(!showStatsWidget)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border transition-colors ${
+              showStatsWidget
+                ? 'bg-[#FDF2F8] border-pink-300 text-[#800020]'
+                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+            title="Tampilkan / Sembunyikan Statistik Tugas"
+          >
+            <BarChart3 className="h-4 w-4" />
+            <span>Statistik</span>
+            {showStatsWidget ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </button>
+
           <div className="flex p-1 bg-gray-100 rounded-xl">
             <button
               onClick={() => setViewMode('kanban')}
@@ -231,6 +284,169 @@ export function Tasks() {
           )}
         </div>
       </div>
+
+      {/* Task Completion Rate & Status Dashboard Widget */}
+      {showStatsWidget && (
+        <div className="rounded-3xl border border-gray-200/80 bg-white p-4 sm:p-6 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-gray-100 gap-2">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                <TrendingUp className="h-4 w-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">
+                  Tingkat Penyelesaian Tugas Tim (Task Completion Rate)
+                </h3>
+                <p className="text-[11px] text-gray-500">
+                  Visualisasi performa penyelesaian tugas per anggota staf dan distribusi status
+                </p>
+              </div>
+            </div>
+
+            <span className="self-start sm:self-auto rounded-full bg-emerald-50 px-3 py-1 text-xs font-extrabold text-emerald-700 border border-emerald-200">
+              {doneTasks} dari {totalTasks} Tugas Selesai ({overallRate}%)
+            </span>
+          </div>
+
+          {/* Grid: Overall Status Gauge + Per-Member Progress Bars */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            {/* Column 1: Global Status Breakdown */}
+            <div className="rounded-2xl bg-gray-50/70 p-4 border border-gray-100 flex flex-col justify-between space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-700">Distribusi Status Tugas</span>
+                <span className="text-[10px] font-mono text-gray-400">Total: {totalTasks}</span>
+              </div>
+
+              {/* Stacked Progress Bar */}
+              <div className="space-y-1.5">
+                <div className="h-3 w-full rounded-full bg-gray-200 overflow-hidden flex">
+                  {totalTasks > 0 ? (
+                    <>
+                      <div
+                        style={{ width: `${(doneTasks / totalTasks) * 100}%` }}
+                        className="bg-emerald-500 transition-all duration-500"
+                        title={`Selesai: ${doneTasks}`}
+                      />
+                      <div
+                        style={{ width: `${(inProgressTasks / totalTasks) * 100}%` }}
+                        className="bg-blue-500 transition-all duration-500"
+                        title={`Sedang Dikerjakan: ${inProgressTasks}`}
+                      />
+                      <div
+                        style={{ width: `${(reviewTasks / totalTasks) * 100}%` }}
+                        className="bg-purple-500 transition-all duration-500"
+                        title={`Review: ${reviewTasks}`}
+                      />
+                      <div
+                        style={{ width: `${(todoTasks / totalTasks) * 100}%` }}
+                        className="bg-gray-400 transition-all duration-500"
+                        title={`TODO: ${todoTasks}`}
+                      />
+                    </>
+                  ) : (
+                    <div className="w-full bg-gray-300" />
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-2 text-[11px]">
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="text-gray-600">Selesai:</span>
+                    <span className="font-bold text-gray-900 ml-auto">{doneTasks}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-blue-500 shrink-0" />
+                    <span className="text-gray-600">Proses:</span>
+                    <span className="font-bold text-gray-900 ml-auto">{inProgressTasks}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-purple-500 shrink-0" />
+                    <span className="text-gray-600">Review:</span>
+                    <span className="font-bold text-gray-900 ml-auto">{reviewTasks}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-gray-400 shrink-0" />
+                    <span className="text-gray-600">TODO:</span>
+                    <span className="font-bold text-gray-900 ml-auto">{todoTasks}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-gray-200/60 text-xs">
+                <span className="text-gray-500 font-medium">Efisiensi Rata-rata</span>
+                <span className="font-black text-[#800020] text-sm">{overallRate}%</span>
+              </div>
+            </div>
+
+            {/* Column 2 & 3: Member Completion Rates Bar List */}
+            <div className="lg:col-span-2 rounded-2xl bg-gray-50/70 p-4 border border-gray-100 flex flex-col justify-between">
+              <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-200/60">
+                <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 text-gray-500" />
+                  <span>Tingkat Penyelesaian per Anggota Tim</span>
+                </span>
+                <span className="text-[10px] text-gray-400 font-medium">Diurutkan berdasarkan performa</span>
+              </div>
+
+              <div className="space-y-3 flex-1 overflow-y-auto max-h-56 pr-1">
+                {memberCompletionStats.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-6">Belum ada penugasan tugas ke anggota tim.</p>
+                ) : (
+                  memberCompletionStats.map(member => (
+                    <div key={member.id} className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <img
+                            src={member.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'}
+                            alt={member.name}
+                            className="h-6 w-6 rounded-full object-cover border border-gray-200 shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <span className="font-bold text-gray-900 truncate block text-[11px] sm:text-xs">
+                              {member.name}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] text-gray-500 font-mono">
+                            {member.done}/{member.total} Selesai
+                          </span>
+                          <span
+                            className={`rounded-md px-1.5 py-0.2 text-[10px] font-extrabold ${
+                              member.rate === 100
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : member.rate >= 50
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {member.rate}%
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Member Progress Bar */}
+                      <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden flex">
+                        <div
+                          style={{ width: `${member.rate}%` }}
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            member.rate === 100
+                              ? 'bg-emerald-500'
+                              : member.rate >= 50
+                              ? 'bg-blue-500'
+                              : 'bg-amber-500'
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filters Bar */}
       <div className="flex flex-wrap gap-2.5">
