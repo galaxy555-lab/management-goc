@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-maroon-50: #fdf2f4;
+    --color-maroon-100: #fbe6ea;
+    --color-maroon-200: #f7d0d8;
+    --color-maroon-300: #f0a9b8;
+    --color-maroon-400: #e5758f;
+    --color-maroon-500: #d44769;
+    --color-maroon-600: #b92b4f;
+    --color-maroon-700: #991d3c;
+    --color-maroon-800: #800020; /* Primary GOC Maroon */
+    --color-maroon-900: #6a041c;
+    --color-maroon-950: #400010;
+
+    --color-softpink-50: #fff5f7;
+    --color-softpink-100: #fde8ed;
+    --color-softpink-200: #fcd5df;
+    --color-softpink-300: #f8b4c5;
+    --color-softpink-400: #f285a2;
+    --color-softpink-500: #e7587f;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

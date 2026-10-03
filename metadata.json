@@ -1,0 +1,6 @@
+{
+  "name": "GOC Team Management",
+  "description": "Sistem Manajemen Tim Internal Galaxy Orthodontic Center (GOC) dengan Role-Based Access Control, Struktur Organisasi, Tugas, Jadwal, Cuti, Payroll, dan Audit Log.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
