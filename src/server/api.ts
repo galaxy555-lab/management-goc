@@ -4,6 +4,7 @@
  */
 
 import { Router, Response } from 'express';
+import crypto from 'node:crypto';
 import { GoogleGenAI } from '@google/genai';
 import {
   db,
@@ -98,6 +99,253 @@ api.post('/auth/login', (req, res) => {
     message: 'Login berhasil.',
     session: authSession,
   });
+});
+
+api.post('/auth/register', (req, res) => {
+  const { full_name, email, username, password, phone, department_id, position_id } = req.body;
+  if (!full_name || !email || !username || !password) {
+    return res.status(400).json({ error: 'Nama Lengkap, Email, Username, dan Password wajib diisi.' });
+  }
+
+  const cleanEmail = String(email).trim().toLowerCase();
+  const cleanUsername = String(username).trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+
+  if (cleanUsername.length < 3) {
+    return res.status(400).json({ error: 'Username minimal 3 karakter (huruf, angka, titik, strip).' });
+  }
+  if (String(password).length < 6) {
+    return res.status(400).json({ error: 'Password minimal 6 karakter.' });
+  }
+
+  const data = db.getData();
+  if (data.users.some(u => u.username.toLowerCase() === cleanUsername)) {
+    return res.status(400).json({ error: `Username "${cleanUsername}" sudah digunakan. Silakan pilih username lain.` });
+  }
+  if (data.users.some(u => u.email.toLowerCase() === cleanEmail)) {
+    return res.status(400).json({ error: `Email "${cleanEmail}" sudah terdaftar. Silakan login atau gunakan email lain.` });
+  }
+
+  const now = new Date().toISOString();
+  const empId = `emp-${Date.now().toString(36)}`;
+  const userId = `user-${Date.now().toString(36)}`;
+  const empNumber = `GOC-${String(data.employees.length + 1).padStart(3, '0')}`;
+
+  const passHash = hashPassword(password);
+
+  const newUser: User = {
+    id: userId,
+    username: cleanUsername,
+    email: cleanEmail,
+    password_hash: passHash.hash,
+    salt: passHash.salt,
+    role_id: 'karyawan',
+    employee_id: empId,
+    status: 'ACTIVE',
+    must_change_password: false,
+    last_login: now,
+    created_at: now,
+    updated_at: now,
+  };
+
+  const newEmployee: Employee = {
+    id: empId,
+    user_id: userId,
+    employee_number: empNumber,
+    full_name: String(full_name).trim(),
+    email: cleanEmail,
+    phone: phone ? String(phone).trim() : '',
+    department_id: department_id || (data.departments[0]?.id || 'dept-adm'),
+    position_id: position_id || (data.positions[0]?.id || 'pos-fo'),
+    manager_id: 'emp-002', // Default reporting to PJ Klinik drg. Ervina
+    join_date: now.split('T')[0],
+    exit_date: null,
+    status: 'ACTIVE',
+    photo: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`,
+    notes: 'Pendaftaran mandiri akun tim GOC.',
+    created_at: now,
+    updated_at: now,
+    deleted_at: null,
+  };
+
+  data.users.push(newUser);
+  data.employees.push(newEmployee);
+
+  // Add to all-team forum channel
+  const allTeamChan = data.forum_channels.find(c => c.id === 'channel-all-team');
+  if (allTeamChan && !allTeamChan.member_ids.includes(userId)) {
+    allTeamChan.member_ids.push(userId);
+  }
+
+  db.persist();
+
+  // Create session
+  const session = createSession(newUser);
+  const authSession = buildAuthSession(newUser, session.token);
+
+  // Audit log
+  db.logAudit({
+    userId: newUser.id,
+    userName: newEmployee.full_name,
+    action: 'USER_REGISTER',
+    module: 'auth',
+    targetType: 'user',
+    targetId: newUser.id,
+    description: `Pendaftaran akun baru: ${newUser.username} (${newEmployee.full_name}).`,
+    ip: (req.headers['x-forwarded-for'] as string) || req.ip,
+    userAgent: req.headers['user-agent'] as string,
+  });
+
+  // Send Notification to Owner
+  db.sendNotification({
+    userId: 'user-001',
+    title: 'Pendaftaran Akun Baru',
+    message: `${newEmployee.full_name} (${cleanUsername}) baru saja mendaftar akun di GOC Team Management.`,
+    type: 'SYSTEM',
+    priority: 'NORMAL',
+    link: '/team',
+  });
+
+  return res.status(201).json({
+    message: 'Pendaftaran akun berhasil!',
+    session: authSession,
+  });
+});
+
+api.post('/auth/google', (req, res) => {
+  const { email, name, picture, googleId } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Data email Google wajib disertakan.' });
+  }
+
+  const data = db.getData();
+  const cleanEmail = String(email).trim().toLowerCase();
+  let user = data.users.find(u => u.email.toLowerCase() === cleanEmail);
+  const now = new Date().toISOString();
+
+  if (user) {
+    // Existing user: check status
+    if (user.status !== 'ACTIVE') {
+      return res.status(403).json({
+        error: `Akun Google Anda (${cleanEmail}) berstatus ${user.status}. Silakan hubungi Administrator.`,
+      });
+    }
+
+    user.last_login = now;
+    const emp = data.employees.find(e => e.id === user?.employee_id);
+    if (emp && picture && (!emp.photo || emp.photo.includes('unsplash'))) {
+      emp.photo = picture;
+    }
+    db.persist();
+
+    const session = createSession(user);
+    const authSession = buildAuthSession(user, session.token);
+
+    db.logAudit({
+      userId: user.id,
+      userName: authSession.user.full_name,
+      action: 'GOOGLE_LOGIN',
+      module: 'auth',
+      targetType: 'user',
+      targetId: user.id,
+      description: `User login menggunakan Google SSO (${cleanEmail}).`,
+      ip: (req.headers['x-forwarded-for'] as string) || req.ip,
+      userAgent: req.headers['user-agent'] as string,
+    });
+
+    return res.json({
+      message: 'Login Google berhasil.',
+      session: authSession,
+    });
+  } else {
+    // New user via Google SSO: Auto-register
+    const empId = `emp-${Date.now().toString(36)}`;
+    const userId = `user-${Date.now().toString(36)}`;
+    const empNumber = `GOC-${String(data.employees.length + 1).padStart(3, '0')}`;
+
+    let baseUsername = cleanEmail.split('@')[0].replace(/[^a-z0-9._-]/g, '');
+    if (baseUsername.length < 3) baseUsername = `user_${baseUsername}`;
+    let finalUsername = baseUsername;
+    let counter = 1;
+    while (data.users.some(u => u.username.toLowerCase() === finalUsername.toLowerCase())) {
+      finalUsername = `${baseUsername}${counter++}`;
+    }
+
+    const passHash = hashPassword(crypto.randomBytes(16).toString('hex'));
+
+    const newUser: User = {
+      id: userId,
+      username: finalUsername,
+      email: cleanEmail,
+      password_hash: passHash.hash,
+      salt: passHash.salt,
+      role_id: 'karyawan',
+      employee_id: empId,
+      status: 'ACTIVE',
+      must_change_password: false,
+      last_login: now,
+      created_at: now,
+      updated_at: now,
+    };
+
+    const newEmployee: Employee = {
+      id: empId,
+      user_id: userId,
+      employee_number: empNumber,
+      full_name: name || baseUsername,
+      email: cleanEmail,
+      phone: '',
+      department_id: data.departments[0]?.id || 'dept-adm',
+      position_id: data.positions[0]?.id || 'pos-fo',
+      manager_id: 'emp-002',
+      join_date: now.split('T')[0],
+      exit_date: null,
+      status: 'ACTIVE',
+      photo: picture || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`,
+      notes: 'Pendaftaran otomatis via Google Sign-In.',
+      created_at: now,
+      updated_at: now,
+      deleted_at: null,
+    };
+
+    data.users.push(newUser);
+    data.employees.push(newEmployee);
+
+    const allTeamChan = data.forum_channels.find(c => c.id === 'channel-all-team');
+    if (allTeamChan && !allTeamChan.member_ids.includes(userId)) {
+      allTeamChan.member_ids.push(userId);
+    }
+
+    db.persist();
+
+    const session = createSession(newUser);
+    const authSession = buildAuthSession(newUser, session.token);
+
+    db.logAudit({
+      userId: newUser.id,
+      userName: newEmployee.full_name,
+      action: 'GOOGLE_REGISTER',
+      module: 'auth',
+      targetType: 'user',
+      targetId: newUser.id,
+      description: `Akun baru terdaftar otomatis melalui Google SSO (${cleanEmail}).`,
+      ip: (req.headers['x-forwarded-for'] as string) || req.ip,
+      userAgent: req.headers['user-agent'] as string,
+    });
+
+    db.sendNotification({
+      userId: 'user-001',
+      title: 'Pendaftaran Akun Baru (Google)',
+      message: `${newEmployee.full_name} (${cleanEmail}) baru saja mendaftar via Google Sign-In.`,
+      type: 'SYSTEM',
+      priority: 'NORMAL',
+      link: '/team',
+    });
+
+    return res.status(201).json({
+      message: 'Pendaftaran dan login via Google berhasil!',
+      session: authSession,
+    });
+  }
 });
 
 api.post('/auth/logout', requireAuth, (req: AuthenticatedRequest, res) => {
@@ -1827,6 +2075,76 @@ api.put('/settings', requirePermission('settings.edit'), (req: AuthenticatedRequ
   });
 
   return res.json({ message: 'Pengaturan berhasil diperbarui.', settings: data.settings });
+});
+
+// ==========================================
+// 15.B DATABASE MANAGEMENT & MULTI-DEVICE SYNC
+// ==========================================
+
+api.get('/database/info', requireAuth, (req, res) => {
+  const stats = db.getDbStats();
+  return res.json(stats);
+});
+
+api.get('/database/backup', requireOwner, (req: AuthenticatedRequest, res) => {
+  const data = db.getData();
+  const dateStr = new Date().toISOString().split('T')[0];
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename="goc_database_backup_${dateStr}.json"`);
+  return res.send(JSON.stringify(data, null, 2));
+});
+
+api.post('/database/restore', requireOwner, (req: AuthenticatedRequest, res) => {
+  const incomingData = req.body;
+  if (!incomingData || typeof incomingData !== 'object') {
+    return res.status(400).json({ error: 'File data database tidak valid.' });
+  }
+
+  try {
+    db.replaceData(incomingData);
+
+    db.logAudit({
+      userId: req.user!.id,
+      userName: req.employee?.full_name || req.user!.username,
+      action: 'RESTORE_DATABASE',
+      module: 'system',
+      targetType: 'database',
+      description: 'Memulihkan cadangan database pusat dari file JSON.',
+      ip: (req.headers['x-forwarded-for'] as string) || req.ip,
+      userAgent: req.headers['user-agent'] as string,
+    });
+
+    return res.json({
+      message: 'Database berhasil dipulihkan dari cadangan.',
+      stats: db.getDbStats(),
+    });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || 'Gagal memulihkan database.' });
+  }
+});
+
+api.post('/database/reset', requireOwner, (req: AuthenticatedRequest, res) => {
+  try {
+    db.resetToSeed();
+
+    db.logAudit({
+      userId: req.user!.id,
+      userName: req.employee?.full_name || req.user!.username,
+      action: 'RESET_DATABASE',
+      module: 'system',
+      targetType: 'database',
+      description: 'Mereset database pusat ke data default klinik GOC.',
+      ip: (req.headers['x-forwarded-for'] as string) || req.ip,
+      userAgent: req.headers['user-agent'] as string,
+    });
+
+    return res.json({
+      message: 'Database berhasil di-reset ke konfigurasi awal klinik GOC.',
+      stats: db.getDbStats(),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Gagal mereset database.' });
+  }
 });
 
 // ==========================================

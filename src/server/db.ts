@@ -1116,6 +1116,52 @@ class Database {
     return this.data;
   }
 
+  public getDbStats() {
+    let sizeBytes = 0;
+    try {
+      if (fs.existsSync(DATA_FILE)) {
+        const stat = fs.statSync(DATA_FILE);
+        sizeBytes = stat.size;
+      }
+    } catch {
+      // ignore
+    }
+
+    return {
+      storage_type: 'Hostinger Node.js Central File Database (JSON Relational Engine)',
+      database_file: DATA_FILE,
+      size_bytes: sizeBytes,
+      size_formatted: `${(sizeBytes / 1024).toFixed(1)} KB`,
+      total_users: this.data.users?.length || 0,
+      total_employees: this.data.employees?.length || 0,
+      total_tasks: this.data.tasks?.length || 0,
+      total_schedules: this.data.schedules?.length || 0,
+      total_leave_requests: this.data.leave_requests?.length || 0,
+      total_payroll_records: this.data.payroll?.length || 0,
+      total_forum_messages: this.data.forum_messages?.length || 0,
+      total_video_meetings: this.data.video_meetings?.length || 0,
+      total_audit_logs: this.data.audit_logs?.length || 0,
+      total_notifications: this.data.notifications?.length || 0,
+      last_sync: new Date().toISOString(),
+    };
+  }
+
+  public replaceData(newData: DatabaseSchema): boolean {
+    if (!newData || !Array.isArray(newData.users) || !Array.isArray(newData.employees)) {
+      throw new Error('Format database JSON tidak valid. Memerlukan tabel users dan employees.');
+    }
+    this.data = newData;
+    this.saveDataSync(this.data);
+    return true;
+  }
+
+  public resetToSeed(): DatabaseSchema {
+    const fresh = generateSeedData();
+    this.data = fresh;
+    this.saveDataSync(this.data);
+    return this.data;
+  }
+
   // Audit Log helper
   public logAudit(entry: {
     userId: string;

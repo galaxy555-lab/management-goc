@@ -1,0 +1,50 @@
+name: Deploy GOC Team Management to Hostinger
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy to Hostinger
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 📦 Install Dependencies
+        run: npm ci
+
+      - name: 🚀 Build Frontend & Standalone server.js
+        run: npm run build
+
+      - name: 📂 Prepare Deployment Package
+        run: |
+          mkdir -p deploy_pkg
+          # Salin file produksi ke folder deployment
+          cp -r dist deploy_pkg/
+          cp server.js deploy_pkg/
+          cp package.json deploy_pkg/
+          cp .htaccess deploy_pkg/
+          # Buat folder data/ jika belum ada
+          mkdir -p deploy_pkg/data
+
+      - name: 🌐 Deploy to Hostinger via FTP/FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
+          username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
+          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
+          local-dir: ./deploy_pkg/
+          server-dir: ./public_html/
+          dangerous-clean-slate: false

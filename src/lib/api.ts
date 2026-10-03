@@ -35,6 +35,7 @@ export async function apiRequest<T = any>(endpoint: string, options: RequestInit
   const token = getStoredToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'Accept': 'application/json',
     ...(options.headers as Record<string, string> || {}),
   };
 
@@ -47,7 +48,21 @@ export async function apiRequest<T = any>(endpoint: string, options: RequestInit
     headers,
   });
 
-  const data = await response.json().catch(() => null);
+  const contentType = response.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+
+  let data: any = null;
+  if (isJson) {
+    data = await response.json().catch(() => null);
+  } else {
+    // If not JSON (e.g. 404 HTML page or index.html from misconfigured rewrite)
+    const text = await response.text().catch(() => '');
+    if (!response.ok) {
+      throw new Error(`Server error (${response.status}): Endpoint API tidak ditemukan atau backend belum berjalan.`);
+    }
+    // If 200 OK but HTML, server is serving index.html instead of executing API
+    throw new Error('Server mengembalikan respon non-JSON. Pastikan backend server Node.js aktif di hosting Anda.');
+  }
 
   if (!response.ok) {
     const errorMsg = data?.error || `Request failed with status ${response.status}`;
@@ -61,5 +76,9 @@ export async function apiRequest<T = any>(endpoint: string, options: RequestInit
     throw new Error(errorMsg);
   }
 
-  return data;
+  if (data === null || data === undefined) {
+    throw new Error('Respon data kosong dari server.');
+  }
+
+  return data as T;
 }

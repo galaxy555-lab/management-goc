@@ -9,6 +9,10 @@
   # Hilangkan tanda '#' di dua baris di bawah jika menggunakan Apache Reverse Proxy:
   # RewriteRule ^api/(.*)$ http://127.0.0.1:3000/api/$1 [P,L]
 
+  # Jangan rewrite permintaan /api/ ke index.html jika backend terpisah
+  RewriteCond %{REQUEST_URI} ^/api/ [NC]
+  RewriteRule ^ - [L]
+
   # 2. Single Page Application (SPA) Client-Side Routing:
   # Arahkan semua request non-file dan non-directory ke index.html
   RewriteRule ^index\.html$ - [L]
