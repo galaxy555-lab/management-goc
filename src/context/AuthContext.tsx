@@ -24,6 +24,7 @@ interface AuthContextType {
     picture?: string;
     googleId?: string;
   }) => Promise<void>;
+  switchAccount: (userId: string) => Promise<void>;
   logout: () => Promise<void>;
   hasPermission: (permissionId: string) => boolean;
   hasAnyPermission: (permissionIds: string[]) => boolean;
@@ -39,25 +40,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState<boolean>(true);
 
   const refreshSession = async () => {
-    const token = getStoredToken();
-    if (!token) {
-      setSession(null);
-      setLoading(false);
-      return;
-    }
-
     try {
       const res = await apiRequest<{ session: AuthSession }>('/api/auth/me');
       if (res && res.session) {
         setSession(res.session);
         saveSession(res.session);
-      } else {
-        clearSession();
-        setSession(null);
       }
     } catch {
-      clearSession();
-      setSession(null);
+      // Fallback: keep existing stored session if any
     } finally {
       setLoading(false);
     }
@@ -67,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshSession();
 
     const handleUnauthorized = () => {
-      setSession(null);
+      refreshSession();
     };
 
     window.addEventListener('auth:unauthorized', handleUnauthorized);
@@ -128,14 +118,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveSession(res.session);
   };
 
+  const switchAccount = async (userId: string) => {
+    try {
+      const res = await apiRequest<{ message: string; session: AuthSession }>('/api/auth/switch-account', {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
+      });
+      if (res && res.session) {
+        setSession(res.session);
+        saveSession(res.session);
+      }
+    } catch (err: any) {
+      console.error('Failed to switch account:', err);
+      throw err;
+    }
+  };
+
   const logout = async () => {
     try {
       await apiRequest('/api/auth/logout', { method: 'POST' });
     } catch {
       // Ignore network errors on logout
     } finally {
+      // Instead of forcing user into a login screen, automatically reload active clinic session
       clearSession();
-      setSession(null);
+      await refreshSession();
     }
   };
 
@@ -179,6 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         register,
         loginWithGoogle,
+        switchAccount,
         logout,
         hasPermission,
         hasAnyPermission,

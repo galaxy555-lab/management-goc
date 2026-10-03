@@ -108,7 +108,7 @@ export function buildAuthSession(user: User, token: string): AuthSession {
       department_name: department ? department.name : '-',
       department_id: department ? department.id : '',
       photo: employee ? employee.photo : '',
-      must_change_password: user.must_change_password,
+      must_change_password: false,
     },
     permissions,
   };
@@ -122,29 +122,39 @@ export interface AuthenticatedRequest extends Request {
 }
 
 export function authMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return next();
-  }
-
-  const token = authHeader.split('Bearer ')[1].trim();
-  const session = getSession(token);
-  if (!session) {
-    return next();
-  }
-
   const data = db.getData();
-  const user = data.users.find(u => u.id === session.userId);
-  if (!user || user.status !== 'ACTIVE') {
-    sessions.delete(token);
-    return next();
+  const authHeader = req.headers.authorization;
+  let user: User | undefined;
+  let token: string | undefined;
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split('Bearer ')[1].trim();
+    const session = getSession(token);
+    if (session) {
+      user = data.users.find(u => u.id === session.userId);
+    }
   }
 
-  const employee = data.employees.find(e => e.id === user.employee_id);
-  req.user = user;
-  req.employee = employee;
-  req.permissions = calculateUserPermissions(user.id);
-  req.sessionToken = token;
+  // DIRECT ACCESS (Langsung Masuk):
+  // If no token or expired session, automatically authenticate as Owner / Super Admin
+  if (!user || user.status !== 'ACTIVE') {
+    user =
+      data.users.find(u => u.role_id === 'owner' && u.status === 'ACTIVE') ||
+      data.users.find(u => u.status === 'ACTIVE') ||
+      data.users[0];
+    if (user) {
+      const autoSession = createSession(user);
+      token = autoSession.token;
+    }
+  }
+
+  if (user) {
+    const employee = data.employees.find(e => e.id === user.employee_id);
+    req.user = user;
+    req.employee = employee;
+    req.permissions = calculateUserPermissions(user.id);
+    req.sessionToken = token;
+  }
 
   next();
 }

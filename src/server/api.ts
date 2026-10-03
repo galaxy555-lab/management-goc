@@ -370,12 +370,65 @@ api.post('/auth/logout', requireAuth, (req: AuthenticatedRequest, res) => {
   return res.json({ message: 'Logout berhasil.' });
 });
 
-api.get('/auth/me', requireAuth, (req: AuthenticatedRequest, res) => {
-  if (!req.user || !req.sessionToken) {
-    return res.status(401).json({ error: 'Sesi tidak valid.' });
+api.get('/auth/me', (req: AuthenticatedRequest, res) => {
+  const data = db.getData();
+  let user = req.user;
+  let token = req.sessionToken;
+
+  if (!user) {
+    user =
+      data.users.find(u => u.role_id === 'owner' && u.status === 'ACTIVE') ||
+      data.users.find(u => u.status === 'ACTIVE') ||
+      data.users[0];
+    if (user) {
+      const s = createSession(user);
+      token = s.token;
+    }
   }
-  const authSession = buildAuthSession(req.user, req.sessionToken);
+
+  if (!user) {
+    return res.status(500).json({ error: 'Tidak ada data pengguna di database.' });
+  }
+
+  if (user.must_change_password) {
+    user.must_change_password = false;
+    db.persist();
+  }
+
+  const authSession = buildAuthSession(user, token || 'direct-access-token');
   return res.json({ session: authSession });
+});
+
+api.post('/auth/switch-account', (req: AuthenticatedRequest, res) => {
+  const { userId } = req.body;
+  const data = db.getData();
+  const targetUser = data.users.find(
+    u => u.id === userId || u.username.toLowerCase() === String(userId).toLowerCase()
+  );
+
+  if (!targetUser) {
+    return res.status(404).json({ error: 'Akun tim tidak ditemukan.' });
+  }
+
+  const s = createSession(targetUser);
+  const authSession = buildAuthSession(targetUser, s.token);
+
+  db.logAudit({
+    userId: targetUser.id,
+    userName: authSession.user.full_name,
+    action: 'SWITCH_ACCOUNT',
+    module: 'auth',
+    targetType: 'user',
+    targetId: targetUser.id,
+    description: `Beralih ke akun ${authSession.user.full_name} (${targetUser.username}).`,
+    ip: (req.headers['x-forwarded-for'] as string) || req.ip,
+    userAgent: req.headers['user-agent'] as string,
+  });
+
+  return res.json({
+    message: `Beralih ke profil ${authSession.user.full_name}`,
+    session: authSession,
+  });
 });
 
 api.post('/auth/change-password', requireAuth, (req: AuthenticatedRequest, res) => {
@@ -639,7 +692,7 @@ api.post('/employees', requirePermission('team.create'), (req: AuthenticatedRequ
     role_id: role_id || 'karyawan',
     employee_id: empId,
     status: (status as EmployeeStatus) || 'ACTIVE',
-    must_change_password: true,
+    must_change_password: false,
     last_login: null,
     created_at: now,
     updated_at: now,
@@ -747,7 +800,7 @@ api.put('/employees/:id', requirePermission('team.edit'), (req: AuthenticatedReq
     const { hash, salt } = hashPassword(new_password);
     user.password_hash = hash;
     user.salt = salt;
-    user.must_change_password = true; // prompt employee to change next time
+    user.must_change_password = false;
   }
 
   emp.updated_at = now;

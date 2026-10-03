@@ -198,7 +198,7 @@ function generateSeedData(): DatabaseSchema {
       managerId: null,
       joinDate: '2020-01-01',
       pass: ownerPass,
-      mustChange: true, // Master prompt: Paksa Owner mengganti password setelah login pertama
+      mustChange: false,
       photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       notes: 'Owner & Founder Galaxy Orthodontic Center. Memiliki hak akses penuh sistem.',
     },

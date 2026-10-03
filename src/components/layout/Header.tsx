@@ -24,6 +24,8 @@ import {
   ArrowRight,
   ExternalLink,
   Trash2,
+  Users,
+  RefreshCw,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -33,7 +35,7 @@ interface HeaderProps {
 }
 
 export function Header({ onToggleSidebar, onNavigate, currentPage }: HeaderProps) {
-  const { session, logout, isOwner } = useAuth();
+  const { session, logout, isOwner, switchAccount } = useAuth();
   const {
     notifications,
     unreadCount,
@@ -381,13 +383,68 @@ export function Header({ onToggleSidebar, onNavigate, currentPage }: HeaderProps
                 </button>
               </div>
 
+              <div className="py-1 border-t border-gray-100">
+                <p className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+                  <span>Ganti Akun Tim (Langsung):</span>
+                  <Users className="h-3 w-3 text-gray-400" />
+                </p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await switchAccount('user-001');
+                    setShowUserMenu(false);
+                  }}
+                  className={`flex w-full items-center justify-between px-3 py-1.5 text-xs transition-colors cursor-pointer ${
+                    session?.user.id === 'user-001'
+                      ? 'font-bold text-[#800020] bg-red-50/70'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="truncate">Hendri K. (Owner)</span>
+                  <span className="text-[10px] text-gray-400 shrink-0">Super Admin</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await switchAccount('user-002');
+                    setShowUserMenu(false);
+                  }}
+                  className={`flex w-full items-center justify-between px-3 py-1.5 text-xs transition-colors cursor-pointer ${
+                    session?.user.id === 'user-002'
+                      ? 'font-bold text-[#800020] bg-red-50/70'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="truncate">drg. Ervina (PJ)</span>
+                  <span className="text-[10px] text-gray-400 shrink-0">PJ Klinik</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await switchAccount('user-007');
+                    setShowUserMenu(false);
+                  }}
+                  className={`flex w-full items-center justify-between px-3 py-1.5 text-xs transition-colors cursor-pointer ${
+                    session?.user.id === 'user-007'
+                      ? 'font-bold text-[#800020] bg-red-50/70'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="truncate">Adelia Suci</span>
+                  <span className="text-[10px] text-gray-400 shrink-0">Perawat</span>
+                </button>
+              </div>
+
               <div className="pt-1 border-t border-gray-100">
                 <button
-                  onClick={() => logout()}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+                  onClick={() => {
+                    logout();
+                    setShowUserMenu(false);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer"
                 >
-                  <LogOut className="h-4 w-4" />
-                  Keluar (Logout)
+                  <RefreshCw className="h-4 w-4 text-gray-400" />
+                  Muat Ulang Sesi (Refresh)
                 </button>
               </div>
             </div>

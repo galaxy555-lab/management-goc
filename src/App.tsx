@@ -9,7 +9,6 @@ import { NotificationProvider } from './context/NotificationContext.tsx';
 import { Header } from './components/layout/Header.tsx';
 import { Sidebar } from './components/layout/Sidebar.tsx';
 import { MobileNav } from './components/layout/MobileNav.tsx';
-import { MustChangePasswordModal } from './components/modals/MustChangePasswordModal.tsx';
 import { NotificationToastList } from './components/notifications/NotificationToastList.tsx';
 import { NotificationCenterModal } from './components/notifications/NotificationCenterModal.tsx';
 
@@ -50,10 +49,8 @@ function AppContent() {
     );
   }
 
-  // Not logged in -> Show Login Page
-  if (!session) {
-    return <Login />;
-  }
+  // Direct Access: Login dihilangkan, langsung masuk ke Dashboard & seluruh modul aplikasi
+  // (Tanpa form login yang menghalangi)
 
   // Page Permission mapping
   const pagePermissions: Record<string, string> = {
@@ -162,11 +159,8 @@ function AppContent() {
         />
       </div>
 
-      {/* Forced Password Change Modal for First Login */}
-      <MustChangePasswordModal />
-
-      {/* Centralized Notification Real-time Alert Toasts & Full Modal */}
-      <NotificationToastList onNavigate={setCurrentPage} />
+        {/* Centralized Notification Real-time Alert Toasts & Full Modal */}
+        <NotificationToastList onNavigate={setCurrentPage} />
       <NotificationCenterModal onNavigate={setCurrentPage} />
     </div>
   );
